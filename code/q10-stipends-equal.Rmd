@@ -1,0 +1,88 @@
+---
+title: "Question 10"
+output:
+    word_document:
+        fig_width: 10
+        fig_height: 6
+---
+
+```{r, message = F, warning = F, echo = F}
+library(here)
+library(dplyr)
+library(readr)
+library(purrr)
+library(tidyr)
+library(stringr)
+library(ggplot2)
+library(forcats)
+library(knitr)
+opts_chunk$set(echo = F)
+```
+
+```{r, message = F}
+surveyClean <-
+    read_csv(here("data", "surveyClean.csv")) %>%
+    mutate(payGrade = as.character(payGrade))
+
+surveyQuestions <- read_csv(here("data", "surveyQs.csv"))
+```
+
+```{r}
+PlotByGroup <- function(df, groupVar, outcomeVar, title, xaxis) {
+    
+    df <- 
+        df %>%
+        filter(!is.na(.data[[outcomeVar]])) %>%
+        count(.data[[groupVar]], .data[[outcomeVar]]) %>%
+        group_by(.data[[groupVar]]) %>%
+        mutate(prcnt = n / sum(n)) %>%
+        filter(!is.na(.data[[groupVar]])) %>%
+        mutate({{groupVar}} := paste0(.data[[groupVar]], " (N = ", sum(n), ")")) %>%
+        ungroup()
+    
+    ggplot(df, aes(x = .data[[outcomeVar]], y = prcnt)) +
+        geom_bar(stat = "identity") +
+        theme_bw() +
+        labs(title = title,
+             y = "Proportion of Respondents",
+             x = xaxis) +
+        facet_wrap(~ .data[[groupVar]], nrow = 1) +
+        coord_flip() +
+        theme(text = element_text(size = 20),
+              title = element_text(size = 17),
+              strip.text.x = element_text(size = 10),
+              axis.text.x = element_text(size = 13, angle = 300, hjust = 0))
+}
+```
+
+## Question 10 - Do you believe stipends are the same across all graduate students in your department?
+
+```{r}
+surveyClean %>%
+    filter(!is.na(paySame)) %>% {
+    ggplot(., aes(paySame)) +
+    geom_bar(aes(y = ..count.. / sum(..count..))) +
+    labs(title = "Do you believe stipends are the same across\nall graduate students in your department?",
+         y = paste0("Proportion of Respondents (N = ", nrow(.), ")"),
+         x = "Opinion") +
+    coord_flip() +
+    theme_bw() +
+    theme(text = element_text(size = 20))}
+```
+
+### Question 10 - Broken down by groups
+
+```{r}
+groupVars <- c("gender", "raceBinary", "race", "studentStatus", "college")
+outcomeVars <- rep("paySame", length(groupVars))
+titles <- c("Do you believe stipends are the same across\nall graduate students in your department? (By Gender)",
+            "Do you believe stipends are the same across\nall graduate students in your department? (By Race)",
+            "Do you believe stipends are the same across\nall graduate students in your department? (By Race)",
+            "Do you believe stipends are the same across\nall graduate students in your department? (By Immigration Status)",
+            "Do you believe stipends are the same across\nall graduate students in your department? (By College)")
+
+pmap(list(groupVars, outcomeVars, titles),
+     PlotByGroup,
+     df = surveyClean,
+     xaxis = "Opinion")
+```

@@ -1,0 +1,177 @@
+---
+title: "Question 12 - Feelings about stipends"
+output:
+    word_document:
+        fig_width: 10
+        fig_height: 6
+---
+
+```{r, message = F, warning = F, echo = F}
+library(here)
+library(dplyr)
+library(readr)
+library(purrr)
+library(tidyr)
+library(stringr)
+library(ggplot2)
+library(forcats)
+library(knitr)
+opts_chunk$set(echo = F)
+```
+
+```{r, message = F}
+# Rearrange our categories in an intuitive fashion
+RelevelAgreementOld <- function(column) {
+    fct_relevel(column,
+                "Strongly Disagree",
+                "Disagree",
+                "Neither disagree nor agree",
+                "Agree",
+                "Strongly Agree")
+}
+
+# Turn our strongly agrees into agree and strongly disagrees into disagrees
+RelevelAgreement <- function(column) {
+    fct_relevel(column, "Neither disagree nor agree", "Disagree", "Agree")
+}
+
+surveyClean <-
+    read_csv(here("data", "surveyClean.csv")) %>%
+    mutate(payGrade = as.character(payGrade)) %>%
+    mutate(across(matches("^Q12_[1-9]{1}$"), RelevelAgreementOld)) %>%
+    mutate(across(matches("Q12_[1-9]_"), RelevelAgreement))
+
+surveyQuestions <- read_csv(here("data", "surveyQs.csv"))
+```
+
+```{r}
+PlotByGroup <- function(df, groupVar, outcomeVar, title, xaxis) {
+    
+    df <- 
+        df %>%
+        filter(!is.na(.data[[outcomeVar]])) %>%
+        count(.data[[groupVar]], .data[[outcomeVar]]) %>%
+        group_by(.data[[groupVar]]) %>%
+        mutate(prcnt = n / sum(n)) %>%
+        filter(!is.na(.data[[groupVar]])) %>%
+        mutate({{groupVar}} := paste0(.data[[groupVar]], " (N = ", sum(n), ")")) %>%
+        ungroup()
+    
+    ggplot(df, aes(x = .data[[outcomeVar]], y = prcnt)) +
+        geom_bar(stat = "identity") +
+        theme_bw() +
+        labs(title = title,
+             y = "Proportion of Respondents",
+             x = xaxis) +
+        facet_wrap(~ .data[[groupVar]], nrow = 1) +
+        coord_flip() +
+        theme(text = element_text(size = 20),
+              title = element_text(size = 16),
+              strip.text.x = element_text(size = 8),
+              axis.text.x = element_text(size = 13, angle = 300, hjust = 0))
+}
+```
+
+## Question 12 - Feelings about graduate stipends
+
+```{r}
+PlotBasic <- function(df, outcomeVar, title) {
+    df %>%
+        filter(!is.na(.data[[outcomeVar]])) %>% {
+        ggplot(., aes(.data[[outcomeVar]])) +
+        geom_bar(aes(y = ..count.. / sum(..count..))) +
+        labs(title = title,
+             y = paste0("Proportion of Respondents (N = ", nrow(.), ")"),
+             x = "Opinion") +
+        coord_flip() +
+        theme_bw() +
+        theme(text = element_text(size = 20),
+              title = element_text(size = 17))}
+}
+
+groupVars <- c("gender", "race", "raceBinary", "studentStatus", "college")
+outcomeVars <- c("Q12_1", "Q12_2", "Q12_3", "Q12_4", "Q12_5", "Q12_6", "Q12_7")
+
+dirtyTitles <- surveyQuestions[outcomeVars] %>% unlist()
+titles <- str_replace(dirtyTitles, "How do you feel about graduate funding\\? - ", "")
+titles[1] <- str_replace(titles[1], "stipend.", "stipend.\n")
+titles[2] <- str_replace(titles[2], "determined.", "determined.\n")
+titles[3] <- str_replace(titles[3], "determined ", "determined\n")
+titles[4] <- str_replace(titles[4], "international ", "international\n")
+titles[5] <- str_replace(titles[5], "genders.", "genders.\n")
+titles[6] <- str_replace(titles[6], "groups.", "groups.\n")
+titles[7] <- str_replace(titles[7], "wage.", "wage.\n")
+
+pmap(list(outcomeVars, titles), PlotBasic, df = surveyClean)
+```
+
+### Question 12 - Satisfaction About Gradaute Funding
+
+```{r}
+satisfaction <- 
+    surveyClean %>%
+    pivot_longer(Q12_1_new) %>%
+    filter(value != "Neither disagree nor agree" & !is.na(payGrade)) %>%
+    mutate(value = case_when(as.character(value) == "Agree" ~ "Satisfied",
+                             as.character(value) == "Disagree" ~ "Unsatisfied",
+                             T ~ as.character(value))) %>%
+    group_by(value, payGrade) %>%
+    summarise(n = n()) %>%
+    mutate(value = paste0(value, " (N = ", sum(n) ,")")) %>%
+    ungroup()
+
+ggplot(satisfaction, aes(x = payGrade, y = n)) +
+    geom_bar(stat = "identity", aes(y = n / sum(n))) +
+    facet_wrap(~value) +
+    theme_bw() +
+    coord_flip() +
+    labs(x = "Gross Monthly Pay",
+         y = "Proportion of Respondents",
+         title = "Difference in Pay Grades for Students Satisfied vs.\nUnsatisifed with their pay") +
+    theme(text = element_text(size = 20),
+          title = element_text(size = 17))
+
+ggplot(satisfaction, aes(x = as.numeric(payGrade), y = n)) +
+    geom_histogram(bins = 5, aes(y = stat(width * density))) +
+    facet_wrap(~value) +
+    theme_bw() +
+    coord_flip() +
+    labs(x = "Gross Monthly Pay",
+         y = "Proportion of Respondents",
+         title = "Difference in Pay Grades for Students Satisfied vs.\nUnsatisifed with their pay") +
+    theme(text = element_text(size = 20),
+          title = element_text(size = 17))
+```
+
+### Question 12 - Broken down by groups
+
+```{r}
+outcomeVars <- paste0(outcomeVars, "_new")
+groupArgs <- rep(groupVars, length(outcomeVars))
+outcomeArgs <- rep(outcomeVars, each = length(groupVars))
+
+titleArgs <- paste0(rep(titles, each = length(groupVars)),
+                    " - By ",
+                    c("Gender", "Race", "Race (Binary)", "Immigration Status",
+                      "College"))
+
+plots <- 
+    pmap(list(groupArgs, outcomeArgs, titleArgs),
+         PlotByGroup,
+         df = surveyClean,
+         xaxis = "Opinion")
+
+names(plots) <- titleArgs
+plots <- plots[names(plots) != "Stipends are distributed fairly between international\nand domestic students. - By Gender"]
+plots <- plots[names(plots) != "Stipends are distributed fairly between international\nand domestic students. - By Race"] 
+plots <- plots[names(plots) != "Stipends are distributed fairly between international\nand domestic students. - By Race (Binary)"] 
+plots <- plots[names(plots) != "Stipends are distributed fairly between international\nand domestic students. - By College"] 
+plots <- plots[names(plots) != "Stipends are distributed fairly across genders.\n - By Race"] 
+plots <- plots[names(plots) != "Stipends are distributed fairly across genders.\n - By Race (Binary)"] 
+plots <- plots[names(plots) != "Stipends are distributed fairly across genders.\n - By Immigration Status"] 
+plots <- plots[names(plots) != "Stipends are distributed fairly across genders.\n - By College"] 
+plots <- plots[names(plots) != "Stipends are distributed fairly across racial groups.\n - By Gender"] 
+plots <- plots[names(plots) != "Stipends are distributed fairly across racial groups.\n - By Immigration Status"] 
+plots <- plots[names(plots) != "Stipends are distributed fairly across racial groups.\n - By College"]
+plots
+```

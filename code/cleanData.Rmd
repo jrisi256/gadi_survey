@@ -1,0 +1,147 @@
+---
+title: "Cleaned Data"
+output: word_document
+---
+
+```{r, message = F, warning = F, echo = F}
+library(here)
+library(dplyr)
+library(readr)
+library(purrr)
+library(tidyr)
+library(stringr)
+library(ggplot2)
+library(forcats)
+library(knitr)
+opts_chunk$set(echo = F)
+```
+
+```{r, message = F}
+survey <- read_csv(here("data", "Stipend_Survey_Choice.csv"))
+```
+
+```{r}
+# Rearrange our categories in an intuitive fashion
+RelevelAgreement <- function(column) {
+    fct_relevel(column,
+                "Strongly Disagree",
+                "Disagree",
+                "Neither disagree nor agree",
+                "Agree",
+                "Strongly Agree")
+}
+
+# Turn our strongly agrees into agree and strongly disagrees into disagrees
+RecodeAgreement <- function(column) {
+    fct_recode(column,
+               "Agree" = "Strongly Agree",
+               "Disagree" = "Strongly Disagree") %>%
+        fct_relevel("Neither disagree nor agree", "Disagree", "Agree")
+}
+
+surveyClean <-
+    survey %>%
+    select(-StartDate, -EndDate, -Status, -RecordedDate, -ResponseId,
+           -DistributionChannel, -UserLanguage, -Finished) %>%
+    filter(Progress == "100") %>%
+    mutate(race = case_when(Q17 == "Yes" ~ "Hispanic",
+                            Q16 == "White" ~ "White",
+                            Q16 == "Black or African American" ~ "Black American",
+                            Q16 == "Asian" ~ "Asian",
+                            str_detect(Q16, "Other") ~ "Multiracial/Other",
+                            Q16 == "Native Hawaiian or Pacific Islander" ~ "Multiracial/Other",
+                            str_detect(Q16, ",") ~ "Multiracial/Other",
+                            Q16 == "Prefer not to say" ~ NA_character_),
+           raceBinary = case_when(Q17 == "Yes" ~ "Nonwhite",
+                            Q16 == "White" ~ "White",
+                            Q16 == "Black or African American" ~ "Nonwhite",
+                            Q16 == "Asian" ~ "Nonwhite",
+                            str_detect(Q16, "Other") ~ "Nonwhite",
+                            Q16 == "Native Hawaiian or Pacific Islander" ~ "Nonwhite",
+                            str_detect(Q16, ",") ~ "Nonwhite",
+                            Q16 == "Prefer not to say" ~ NA_character_),
+           payGrade = case_when(Q8 == "Grade 9" ~ "1728",
+                                Q8 == "Grade 10" ~ "1800",
+                                Q8 == "Grade 11" ~ "1926",
+                                Q8 == "Grade 12" ~ "2079",
+                                Q8 == "Grade 13" ~ "2178",
+                                Q8 == "Grade 14" ~ "2286",
+                                Q8 == "Grade 15" ~ "2349",
+                                Q8 == "Grade 16" ~ "2421",
+                                Q8 == "Grade 17" ~ "2511",
+                                Q8 == "Grade 18" ~ "2601",
+                                Q8 == "Grade 19" ~ "2659.50",
+                                Q8 == "Grade 20" ~ "2740.50",
+                                Q8 == "Grade 21" ~ "2848.50",
+                                Q8 == "Grade 22" ~ "2974.50",
+                                Q8 == "Grade 23" ~ "3096",
+                                Q8 == "Grade 24" ~ "3217.50",
+                                Q8 == "Grade 25" ~ "3334.50",
+                                Q8 == "Grade 26" ~ "3456"),
+           gender = case_when(Q18 == "Genderqueer/Non-binary" ~ "Genderqueer/Non-binary",
+                              Q18=="Other (please specify)" ~ NA_character_,
+                              Q18 == "Man" ~ "Man",
+                              Q18 == "Woman" ~ "Woman ",
+                              Q18 == "Prefer not to say" ~ NA_character_),
+           college = case_when(Q15_1 == "Liberal Arts" ~ "Arts/Humanities",
+                               Q15_1 == "Agricultural Sciences" ~ "Agriculture",
+                               Q15_1 == "Arts and Architecture" ~ "Arts/Humanities",
+                               Q15_1 == "Education" ~ "Arts/Humanities",
+                               Q15_1 == "Eberly College of Sciences" ~ "STEM",
+                               Q15_1 == "Intercollege" ~ "Intercollege",
+                               Q15_1 == "Health and Human Development" ~ "Arts/Humanities",
+                               Q15_1 == "Engineering" ~ "STEM",
+                               Q15_1 == "Information Sciences and Technology" ~ "STEM",
+                               Q15_1 == "Earth and Mineral Sciences" ~ "STEM",
+                               Q15_1 == "College of Nursuing" ~ "STEM",
+                               Q15_1 == "College of Medicine" ~ "STEM",
+                               Q15_1 == "Donald D. Bellisario College of Communications" ~ "Arts/Humanities",
+                               Q15_1 == "School of International Affairs" ~ "Arts/Humanities")) %>%
+    mutate(across(matches("Q12_"), RelevelAgreement)) %>%
+    mutate(across(matches("Q12_"), list(new = RecodeAgreement))) %>%
+    select(-Q8, -Q16, -Q17, -Q16_7_TEXT, -Progress, -Q18) %>%
+    rename("studentStatus" = Q19, "paySame" = Q10)
+
+surveyQuestions <-
+    survey %>%
+    select(-StartDate, -EndDate, -Status, -RecordedDate, -ResponseId,
+           -DistributionChannel, -UserLanguage) %>%
+    slice(1)
+
+write_csv(surveyClean, "surveyClean.csv")
+write_csv(surveyQuestions, "surveyQs.csv")
+```
+
+* We filter out everybody who did not complete the survey. This comes to `r nrow(survey) - 2 - nrow(surveyClean)` responses which is about `r paste0(round((nrow(survey) - 2 - nrow(surveyClean)) / (nrow(survey) - 2), 3) * 100, "%")` of the sample. We do this because most of the responses aren't filled in enough to be of use. Also none of them had demographic information.
+* We recode gender as follows:
+    * *Genderqueer/Non-binary* stays *Genderqueer/Non-binary*.
+    * *Man* stays *Man*.
+    * *Woman* stays *Woman*.
+    * *Prefer not to say* and *Other (please specify)* become *missing*. There was only one individual who specified *Other (please specify)*, and they identified as asexual.
+* We recode race as follows:
+    * If they answered yes to Question 17 (Are you Hispanic?), they are coded as *Hispanic*.
+    * *White* stays *White*. It is implied they are non-Hispanic.
+    * *Black or African American* becomes *Black American*. It is implied they are non-Hispanic.
+    * *Asian* stays *Asian*. It is implied they are non-Hispanic.
+    * *Other (please specify)* becomes *Multiracial/Other*. It is implied they are non-Hispanic.
+    * *Native Hawaiian or Pacific Islander* becomes *Multiracial/Other*. It is implied they are non-Hispanic. There was only one person in this category.
+    * If a person put multiple categories, they were coded as *Multiracial/Other*. It is implied they are non-Hispanic.
+    * *Prefer not to say* are coded as *missing*.
+* We recode race (binary) as follows:
+    * *White* remains white.
+    * All other categories become *nonwhite*.
+* We code college as follows:
+    * *Liberal Arts* becomes *Arts/Humanities*.
+    * *Agricultural Sciences* becomes *Agriculture*.
+    * *Arts and Architecture* becomes *Arts/Humanities*.
+    * *Education* becomes *Arts/Humanities*.
+    * *Eberly College of Sciences* becomes *STEM*.
+    * *Intercollege* remains *Intercollege*.
+    * *Health and Human Development* becomes *Arts/Humanities*.
+    * *Engineering* becomes *STEM*.
+    * *Information Sciences and Technology* becomes *STEM*.
+    * *Earth and Mineral Sciences* becomes *STEM*.
+    * *College of Nursing* becomes *STEM*.
+    * *College of Medicine* becomes *STEM*.
+    * *Donald D. Bellisario College of Communications* becomes *Arts/Humanities*.
+    * *School of International Affairs* becomes *Arts/Humanities*.

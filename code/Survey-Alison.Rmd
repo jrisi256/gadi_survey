@@ -1,0 +1,242 @@
+---
+title: "Survey"
+output: pdf_document
+---
+
+## Packages
+
+```{r, message = F, warning = F}
+library(here)
+library(dplyr)
+library(readr)
+library(purrr)
+library(tidyr)
+library(ggplot2)
+library(tidyverse)
+library(chisq.posthoc.test)
+```
+
+## Read in data
+
+```{r, message = F}
+survey <- read_csv(here("data", "Stipend_Survey_Choice.csv"))
+```
+
+## Clean data
+
+```{r}
+surveyClean <-
+    survey %>%
+    select(-StartDate, -EndDate, -Status, -RecordedDate, -ResponseId,
+           -DistributionChannel, -UserLanguage, -Finished) %>%
+    filter(Progress == "100") %>%
+    mutate(race = case_when(Q17 == "Yes" ~ "Hispanic",
+                            Q16 == "White" ~ "White",
+                            Q16 == "Black or African American" ~ "Black American",
+                            Q16 == "Asian" ~ "Asian",
+                            str_detect(Q16, "Other") ~ "Multiracial/Other",
+                            Q16 == "Native Hawaiian or Pacific Islander" ~ "Multiracial/Other",
+                            str_detect(Q16, ",") ~ "Multiracial/Other",
+                            Q16 == "Prefer not to say" ~ NA_character_),
+           race2 = case_when(Q17 == "Yes" ~ "NonWhite",
+                            Q16 == "White" ~ "White",
+                            Q16 == "Black or African American" ~ "NonWhite",
+                            Q16 == "Asian" ~ "NonWhite",
+                            str_detect(Q16, "Other") ~ "NonWhite",
+                            Q16 == "Native Hawaiian or Pacific Islander" ~ "NonWhite",
+                            str_detect(Q16, ",") ~ "NonWhite",
+                            Q16 == "Prefer not to say" ~ NA_character_),
+           payGrade = case_when(Q8 == "Grade 9" ~ "1728",
+                                Q8 == "Grade 10" ~ "1800",
+                                Q8 == "Grade 11" ~ "1926",
+                                Q8 == "Grade 12" ~ "2079",
+                                Q8 == "Grade 13" ~ "2178",
+                                Q8 == "Grade 14" ~ "2286",
+                                Q8 == "Grade 15" ~ "2349",
+                                Q8 == "Grade 16" ~ "2421",
+                                Q8 == "Grade 17" ~ "2511",
+                                Q8 == "Grade 18" ~ "2601",
+                                Q8 == "Grade 19" ~ "2659.50",
+                                Q8 == "Grade 20" ~ "2740.50",
+                                Q8 == "Grade 21" ~ "2848.50",
+                                Q8 == "Grade 22" ~ "2974.50",
+                                Q8 == "Grade 23" ~ "3096",
+                                Q8 == "Grade 24" ~ "3217.50",
+                                Q8 == "Grade 25" ~ "3334.50",
+                                Q8 == "Grade 26" ~ "3456"),
+           gender = case_when(Q18 == "Genderqueer/Non-binary" ~ "Non-binary",
+                              Q18=="Other (please specify)" ~ NA_character_,
+                              Q18 == "Man" ~ "Man",
+                              Q18 == "Woman" ~ "Woman ",
+                              Q18 == "Prefer not to say" ~ NA_character_)) %>%
+    select(-Q16, -Q17, -Q16_7_TEXT, -Progress, -Q18)
+
+
+surveyQuestions <-
+    survey %>%
+    select(-StartDate, -EndDate, -Status, -RecordedDate, -ResponseId,
+           -DistributionChannel, -UserLanguage) %>%
+    slice(1)
+```
+
+## significance test
+
+```{r}
+surveyClean <- 
+  surveyClean %>%
+  mutate(Q12_1N = case_when(Q12_1 == "Strongly Disagree" ~ "1",
+                            Q12_1 == "Disagree" ~ "2",
+                            Q12_1 == "Neither disagree nor agree" ~ "3",
+                            Q12_1 == "Agree" ~ "4",
+                            Q12_1 == "Strongly Agree" ~ "5"),
+         Q12_2N = case_when(Q12_2 == "Strongly Disagree" ~ "1",
+                            Q12_2 == "Disagree" ~ "2",
+                            Q12_2 == "Neither disagree nor agree" ~ "3",
+                            Q12_2 == "Agree" ~ "4",
+                            Q12_2 == "Strongly Agree" ~ "5"),
+         Q12_3N = case_when(Q12_3 == "Strongly Disagree" ~ "1",
+                            Q12_3 == "Disagree" ~ "2",
+                            Q12_3 == "Neither disagree nor agree" ~ "3",
+                            Q12_3 == "Agree" ~ "4",
+                            Q12_3 == "Strongly Agree" ~ "5"),
+         Q12_4N = case_when(Q12_4 == "Strongly Disagree" ~ "1",
+                            Q12_4 == "Disagree" ~ "2",
+                            Q12_4 == "Neither disagree nor agree" ~ "3",
+                            Q12_4 == "Agree" ~ "4",
+                            Q12_4 == "Strongly Agree" ~ "5"),
+         Q12_5N = case_when(Q12_5 == "Strongly Disagree" ~ "1",
+                            Q12_5 == "Disagree" ~ "2",
+                            Q12_5 == "Neither disagree nor agree" ~ "3",
+                            Q12_5 == "Agree" ~ "4",
+                            Q12_5 == "Strongly Agree" ~ "5"),
+         Q12_6N = case_when(Q12_6 == "Strongly Disagree" ~ "1",
+                            Q12_6 == "Disagree" ~ "2",
+                            Q12_6 == "Neither disagree nor agree" ~ "3",
+                            Q12_6 == "Agree" ~ "4",
+                            Q12_6 == "Strongly Agree" ~ "5"),
+         Q12_7N = case_when(Q12_7 == "Strongly Disagree" ~ "1",
+                            Q12_7 == "Disagree" ~ "2",
+                            Q12_7 == "Neither disagree nor agree" ~ "3",
+                            Q12_7 == "Agree" ~ "4",
+                            Q12_7 == "Strongly Agree" ~ "5"),
+         payGradeN = case_when(Q8 == "Grade 9" ~ "1",
+                                Q8 == "Grade 10" ~ "2",
+                                Q8 == "Grade 11" ~ "3",
+                                Q8 == "Grade 12" ~ "4",
+                                Q8 == "Grade 13" ~ "5",
+                                Q8 == "Grade 14" ~ "6",
+                                Q8 == "Grade 15" ~ "7",
+                                Q8 == "Grade 16" ~ "8",
+                                Q8 == "Grade 17" ~ "9",
+                                Q8 == "Grade 18" ~ "10",
+                                Q8 == "Grade 19" ~ "11",
+                                Q8 == "Grade 20" ~ "12",
+                                Q8 == "Grade 21" ~ "13",
+                                Q8 == "Grade 22" ~ "14",
+                                Q8 == "Grade 23" ~ "15",
+                                Q8 == "Grade 24" ~ "16",
+                                Q8 == "Grade 25" ~ "17",
+                                Q8 == "Grade 26" ~ "18"))
+  
+surveyClean$Q12_1N <- as.numeric(surveyClean$Q12_1N)
+surveyClean$Q12_2N <- as.numeric(surveyClean$Q12_2N)
+surveyClean$Q12_3N <- as.numeric(surveyClean$Q12_3N)
+surveyClean$Q12_4N <- as.numeric(surveyClean$Q12_4N)
+surveyClean$Q12_5N <- as.numeric(surveyClean$Q12_5N)
+surveyClean$Q12_6N <- as.numeric(surveyClean$Q12_6N)
+surveyClean$Q12_7N <- as.numeric(surveyClean$Q12_7N)
+surveyClean$payGradeN <- as.numeric(surveyClean$payGradeN)
+surveyClean$Q10 <- as.factor(surveyClean$Q10)
+surveyClean$Q19 <- as.factor(surveyClean$Q19)
+surveyClean$gender<-as.factor(surveyClean$gender)
+surveyClean$race<-as.factor(surveyClean$race)
+
+#paygrade
+summary(aov(payGradeN~gender, surveyClean))
+summary(aov(payGradeN~race, surveyClean))
+summary(aov(payGradeN~race2, surveyClean))
+summary(aov(payGradeN~Q19, surveyClean))
+TukeyHSD(aov(payGradeN~Q19, surveyClean))
+
+
+#stipend are the same across all graduates
+chisq.test(table(surveyClean$gender,surveyClean$Q10),simulate.p.value=TRUE)
+chisq.test(table(surveyClean$race,surveyClean$Q10),simulate.p.value=TRUE)
+chisq.posthoc.test(table(surveyClean$race,surveyClean$Q10),simulate.p.value=TRUE,method = "bonferroni")
+chisq.test(table(surveyClean$race2,surveyClean$Q10),simulate.p.value=TRUE)
+chisq.test(table(surveyClean$Q19,surveyClean$Q10),simulate.p.value=TRUE)
+
+#satisfied with amount of stipend
+model <- aov(Q12_1N~gender, surveyClean)
+summary(model)
+TukeyHSD(model)
+model2 <- aov(Q12_1N~race, surveyClean)
+summary(model2)
+model2.2 <- aov(Q12_1N~race2, surveyClean)
+summary(model2.2)
+model3 <- aov(Q12_1N~Q19, surveyClean)
+summary(model3)
+
+
+#clear how stipends are determined
+model5 <- aov(Q12_2N~gender, surveyClean)
+summary(model5)
+model6 <- aov(Q12_2N~race, surveyClean)
+summary(model6)
+model6.2 <- aov(Q12_2N~race2, surveyClean)
+summary(model6.2)
+model7 <- aov(Q12_2N~Q19, surveyClean)
+summary(model7)
+
+
+#clear how appointments are determined
+model9 <- aov(Q12_3N~gender, surveyClean)
+summary(model9)
+model10 <- aov(Q12_3N~race, surveyClean)
+summary(model10)
+model10.2 <- aov(Q12_3N~race2, surveyClean)
+summary(model10.2)
+model11 <- aov(Q12_3N~Q19, surveyClean)
+summary(model11)
+
+
+#graduates make a living wage
+model13 <- aov(Q12_7N~gender, surveyClean)
+summary(model13)
+TukeyHSD(model13)
+model14 <- aov(Q12_7N~race, surveyClean)
+summary(model14)
+model14.2 <- aov(Q12_7N~race2, surveyClean)
+summary(model14.2)
+model15 <- aov(Q12_7N~Q19, surveyClean)
+summary(model15)
+
+
+#distributed fairly between international & domestic students
+model17 <- aov(Q12_4N~Q19, surveyClean)
+summary(model17)
+
+#distributed fairly across genders
+model18 <- aov(Q12_5N~gender, surveyClean)
+summary(model18)
+
+#distributed fairly across racial groups
+model19 <- aov(Q12_6N~race, surveyClean)
+summary(model19)
+TukeyHSD(model19)
+model19.2 <- aov(Q12_6N~race2, surveyClean)
+summary(model19.2)
+TukeyHSD(model19.2)
+
+#comparing against scale mid-point
+t.test(surveyClean$Q12_1N, mu = 3)
+t.test(surveyClean$Q12_2N, mu = 3)
+t.test(surveyClean$Q12_3N, mu = 3)
+t.test(surveyClean$Q12_4N, mu = 3)
+t.test(surveyClean$Q12_5N, mu = 3)
+t.test(surveyClean$Q12_6N, mu = 3)
+t.test(surveyClean$Q12_7N, mu = 3)
+
+summary(lm(Q12_1N~payGradeN,surveyClean))
+```
+
